@@ -8,18 +8,128 @@ output:
 
 ## Loading and preprocessing the data
 
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+The variables included in this dataset are:
+
+* steps: Number of steps taking in 5-minute interval. Missing values are coded as NA.  
+* date: The date on which the measurement was taken in YYYY-MM-DD format.  
+* interval: Identifier for 5-minute interval of measurement.  
+
+```{r getdata}
+library(plyr); library(dplyr)
+myfile <- unzip('activity.zip')
+df <- read.csv(myfile)
+str(df)
+num_int <- nrow(df)
+num_na <- nrow(df[is.na(df$steps),])
+df$date <- as.Date(df$date, tryFormats=c("%Y-%m-%d"))
+df_totals <- df %>% group_by(date) %>% summarize(total=sum(steps))
+```
+
+There are 17568 rows representing 61 days x 288 5-minute intervals per day. Steps data is missing (NA) for `r round(num_na/num_int*100,1)`% of the `r num_int` intervals. 
 
 
 ## What is mean total number of steps taken per day?
 
+```{r dailysteps}
+library(ggplot2)
+mean_steps <- mean(df_totals$total, na.rm=TRUE)
+mean_steps_char <- format(mean_steps, digits=0, scientific=FALSE)
+median_steps <- median(df_totals$total, na.rm=TRUE)
+g <- ggplot(df_totals, aes(x=date, y=total)) + geom_col(fill='gray') +
+        labs(title='Total Steps per Day',y='Total steps', x='Date') +
+        geom_hline(yintercept=mean_steps, color='red') +
+        theme_bw()
+```
+
+The following displays total steps per day. The mean number of steps per day is `r  mean_steps_char`. The median number of steps is `r median_steps`. The mean steps is shown as horizontal line below.
+
+```{r, echo=FALSE}
+g
+```
 
 
 ## What is the average daily activity pattern?
 
+```{r dailypattern}
+daily <- df %>% group_by(interval) %>% summarize(mean=mean(steps, na.rm=TRUE))
+# head(daily)
+max_interval <- daily$interval[which.max(daily$mean)]
+g <- ggplot(daily, aes(x=interval, y=mean))+geom_line() +
+        labs(title='Average Steps per 5 Minute Interval',
+             x='5 minute interval', y='Number of Steps') +
+        geom_vline(xintercept=max_interval, col='red', size=1, alpha=0.5)+
+        theme_bw()
+
+```
+
+The following displays average number of steps by 5 minute interval across all days. The interval with the highest average is `r max_interval`.
+
+```{r, echo=FALSE}
+g
+```
 
 
 ## Imputing missing values
 
+There are 17568 rows representing 61 days x 288 5-minute intervals per day. Steps data is missing (NA) for `r num_na` of the intervals. This represents `r round(num_na/num_int*100,1)`% of total intervals.
+
+```{r imputeNA}
+# create new data frame replacing NA steps with imputed values. 
+# If steps for an interval are NA, replace with median for that interval
+df_imp <- ddply(df, ~ interval, transform, 
+      steps = ifelse(is.na(steps),
+      median(steps, na.rm=TRUE),
+      steps))
+```                           
+
+Intervals with missing steps are replaced with median for that time interval across all dates.
+
+```{r dailystepsimputed}
+df_imp_totals <- df_imp %>% group_by(date) %>% summarize(total=sum(steps))
+mean_imp_steps <- mean(df_imp_totals$total)
+mean_imp_steps_char <- format(mean_imp_steps, digits=0, scientific=FALSE)
+median_imp_steps <- median(df_imp_totals$total)
+g <- ggplot(df_imp_totals, aes(x=date, y=total)) + geom_col(fill='gray') +
+        labs(title='Total Steps per Day (Adjusted Data)',
+             y='Total steps', x='Date') +
+        geom_hline(yintercept=mean_imp_steps, color='red') +
+        theme_bw()
+```
+
+The following displays total steps per day for the adjusted data. Replacing missing step data with imputed values reduces the mean and median total daily steps.
+
+The mean steps per day is `r mean_imp_steps_char`.
+This is `r round((mean_imp_steps/mean_steps-1)*100,1)`% lower than mean
+steps in original data of `r mean_steps_char`.
+
+The median steps per day is `r median_imp_steps`. This is `r round((median_imp_steps/median_steps-1)*100,1)`% lower than
+median steps in original data of `r median_steps`.
+
+```{r, echo=FALSE}
+g
+```
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+```{r weekdaypatterns}
+df_imp$weekday <- weekdays(df_imp$date)
+df_imp <- mutate(df_imp, wkdy = ifelse(weekday %in% c('Saturday','Sunday'),'weekend', 'weekday'))
+# head(df_imp,20)
+daily <- df_imp %>% group_by(interval, wkdy) %>% summarize(mean=mean(steps))
+# head(daily)
+
+g <- ggplot(daily, aes(x=interval, y=mean))+geom_line() +
+        labs(title='Average Steps per 5 Minute Interval',
+             x='5 minute interval', y='Number of Steps') +
+        theme_bw() +
+        facet_wrap(~ wkdy, nrow=2)
+```
+
+The following displays average number of steps by 5 minute interval across all days. Weekdays are compared to weekends. There is some difference in activity pattern between weekdays and weekends.
+
+```{r, echo=FALSE}
+g
+```
